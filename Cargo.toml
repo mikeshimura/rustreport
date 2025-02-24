@@ -10,5 +10,6 @@ lopdf = "0.26"
 rusttype = "0.8"
 image = "0.25.5"
 genpdf = "0.2.0"
+serde_json = "1.0.139"
 
 

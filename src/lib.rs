@@ -11,6 +11,7 @@ use printpdf::{
 use printpdf::{Color, Rgb};
 use std::collections::HashMap;
 use std::{fmt, fs};
+use serde_json::Value;
 
 pub struct Context {
     pub page_height: f32,
@@ -21,12 +22,18 @@ pub struct Context {
     pub font_cache: Option<FontCache>,
     pub font_id: FontId,
     pub font_size: i32,
-    pub cur_vpos: f64,
     pub buffer: Vec<String>,
     pub doc: PdfDocument,
     pub opttext: Vec<Op>,
     pub optgraphic: Vec<Op>,
     pub genpdffonts: HashMap<String, FontFamily<Font>>,
+    pub input: Vec<Vec<String>>,
+    pub cur_line:i32,
+    pub cur_vpos: f64,
+    pub footer_vpos: f64,
+    pub sum_work:HashMap<String,Value>,
+    pub page:i32,
+    pub page_total:i32 ,
 }
 #[derive(PartialEq)]
 pub enum PageOrientation {
@@ -71,9 +78,15 @@ impl Context {
             optgraphic: Vec::new(),
             genpdffonts: HashMap::new(),
             font_size: 0,
+            cur_line:0,
             cur_vpos: 0.0,
+            footer_vpos:0.0,
             buffer: Vec::new(),
             doc: PdfDocument::new("PDF"),
+            input: Vec::new(),
+            sum_work:  HashMap::new(),
+            page:0,
+            page_total:0,
         }
     }
 }
