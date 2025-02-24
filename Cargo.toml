@@ -1,0 +1,14 @@
+[package]
+name = "rustreport"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+genpdfrev = {path = "../genpdfrev"}
+printpdf = { path = "../printpdf" }
+lopdf = "0.26"
+rusttype = "0.8"
+image = "0.25.5"
+genpdf = "0.2.0"
+
+
