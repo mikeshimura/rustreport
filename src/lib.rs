@@ -1,3 +1,5 @@
+pub mod exec;
+
 use genpdfrev;
 use genpdfrev::fonts::{Font, FontCache, FontFamily};
 use genpdfrev::render::Page;
@@ -32,8 +34,51 @@ pub struct Context {
     pub cur_vpos: f64,
     pub footer_vpos: f64,
     pub sum_work:HashMap<String,Value>,
+    pub vers:HashMap<String,String>,
     pub page:i32,
+    pub page_report:i32,
     pub page_total:i32 ,
+    pub flags:HashMap<String,bool>,
+    pub detail:Vec<Box<dyn exec::Detail>>,
+    pub page_header:Vec<Box<dyn exec::PageHeader>>,
+    pub footor:Vec<Box<dyn exec::Footer>>,
+    pub summary:Vec<Box<dyn exec::Summary>>,
+    pub report_summary:Vec<Box<dyn exec::ReportSummary>>,
+}
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Context {
+            page_height: self.page_height,
+            page_width: self.page_width,
+            pages: self.pages.clone(),
+            font_files: self.font_files.clone(),
+            font_name: self.font_name.clone(),
+            font_cache: self.font_cache.clone(),
+            font_id: self.font_id.clone(),
+            font_size: self.font_size,
+            buffer: self.buffer.clone(),
+            doc: self.doc.clone(),
+            opttext: self.opttext.clone(),
+            optgraphic: self.optgraphic.clone(),
+            genpdffonts: self.genpdffonts.clone(),
+            input: self.input.clone(),
+            cur_line: self.cur_line,
+            cur_vpos: self.cur_vpos,
+            footer_vpos: self.footer_vpos,
+            sum_work: self.sum_work.clone(),
+            vers: self.vers.clone(),
+            page: self.page,
+            page_report: 0,
+            page_total: self.page_total,
+            flags: self.flags.clone(),
+            detail: Vec::new(), // Do not clone the detail field
+            page_header: Vec::new(),
+            footor: Vec::new(),
+            summary: Vec::new(),
+            report_summary: Vec::new(),
+
+        }
+    }
 }
 #[derive(PartialEq)]
 pub enum PageOrientation {
@@ -85,8 +130,16 @@ impl Context {
             doc: PdfDocument::new("PDF"),
             input: Vec::new(),
             sum_work:  HashMap::new(),
+            vers: HashMap::new(),
             page:0,
+            page_report: 0,
             page_total:0,
+            flags: HashMap::new(),
+            detail: vec![],
+            page_header: vec![],
+            footor: vec![],
+            summary: vec![],
+            report_summary: vec![],
         }
     }
 }
@@ -221,12 +274,12 @@ impl Context {
                         width = 279.0;
                         height = 216.0;
                     }
-                    create_doc(self, width, height)
+                    self.create_doc(width, height)
                 }
                 "PM" => {
                     let h = v[1].parse::<f32>().unwrap();
                     let w = v[2].parse::<f32>().unwrap();
-                    create_doc(self, w, h)
+                    self.create_doc(w, h)
                 }
                 "FF" => {
                     let fontName = v[1];
@@ -504,13 +557,13 @@ impl Context {
                         },
                     });
                 }
-                "NP" => new_page(self),
+                "NP" => self.new_page(),
                 _ => {
                     println!("Unknown command: {}", v[0]);
                 }
             }
         }
-        new_page(self);
+        self.new_page();
     }
 }
 struct PtTo1i32(Pt);
@@ -544,41 +597,70 @@ fn get_image_dimensions(file_path: &str) -> image::ImageResult<(u32, u32)> {
     // img.dimensions();
     image::image_dimensions(file_path)
 }
-fn create_doc(context: &mut Context, w: f32, h: f32) {
-    let doc = PdfDocument::new("PDF");
-    context.doc = doc.clone();
-    context.page_height = h;
-    context.page_width = w;
-    context.cur_vpos = 0.0;
-    //context.opttext.push(Op::StartTextSection);
-}
+impl Context {
+    fn create_doc(&mut self, w: f32, h: f32) {
+        let doc = PdfDocument::new("PDF");
+        self.doc = doc.clone();
+        self.page_height = h;
+        self.page_width = w;
+        self.cur_vpos = 0.0;
+        //context.opttext.push(Op::StartTextSection);
+    }
 
-fn new_page(context: &mut Context) {
-    //context.opttext.push(Op::EndTextSection);
-    let mut ops: Vec<Op> = Vec::new();
-    let grapiclayer = context.doc.add_layer(&Layer::new("Grapic content"));
-    let textlayer = context.doc.add_layer(&Layer::new("Text content"));
-    ops.push(Op::BeginLayer {
-        layer_id: grapiclayer.clone(),
-    });
-    ops.extend(context.optgraphic.clone());
-    ops.push(Op::EndLayer {
-        layer_id: grapiclayer.clone(),
-    });
-    ops.push(Op::BeginLayer {
-        layer_id: textlayer.clone(),
-    });
-    ops.extend(context.opttext.clone());
-    ops.push(Op::EndLayer {
-        layer_id: textlayer.clone(),
-    });
-    context.pages.push(PdfPage::new(
-        Mm(context.page_width),
-        Mm(context.page_height),
-        ops,
-    ));
-    context.opttext = Vec::new();
-    context.optgraphic = Vec::new();
-    // context.opttext.push(Op::StartTextSection);
-    context.cur_vpos = 0.0;
+    fn new_page(&mut self) {
+        //context.opttext.push(Op::EndTextSection);
+        let mut ops: Vec<Op> = Vec::new();
+        let grapiclayer = self.doc.add_layer(&Layer::new("Grapic content"));
+        let textlayer = self.doc.add_layer(&Layer::new("Text content"));
+        ops.push(Op::BeginLayer {
+            layer_id: grapiclayer.clone(),
+        });
+        ops.extend(self.optgraphic.clone());
+        ops.push(Op::EndLayer {
+            layer_id: grapiclayer.clone(),
+        });
+        ops.push(Op::BeginLayer {
+            layer_id: textlayer.clone(),
+        });
+        ops.extend(self.opttext.clone());
+        ops.push(Op::EndLayer {
+            layer_id: textlayer.clone(),
+        });
+        self.pages.push(PdfPage::new(
+            Mm(self.page_width),
+            Mm(self.page_height),
+            ops,
+        ));
+        self.opttext = Vec::new();
+        self.optgraphic = Vec::new();
+        // self.opttext.push(Op::StartTextSection);
+        self.cur_vpos = 0.0;
+        self.page=self.page+1;
+        self.page_total=self.page_total+1;
+        self.page_report=self.page_report+1;
+    }
+}
+impl Context{
+    pub fn exec(&mut self){
+       if self.footer_vpos==0.0{
+           panic!("Footer position is not set");
+       }
+        self.page=1;
+        self.page_total=1;
+        self.page_report=1;
+        if self.page_header.len()>0{
+                self.page_header[0].Execute(self.clone());
+        }
+        self.buffer.push("v\tPAGE\t".to_string() + self.page.to_string().as_str() );
+        for i in self.cur_line as usize..self.input.len(){
+            self.cur_line= i as i32;
+            self.exec_detail();
+        }
+    }
+    pub fn exec_detail(&mut self){
+        if self.flags.get("NewPageForce"){
+
+        }
+
+    }
 }
