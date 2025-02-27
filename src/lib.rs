@@ -11,9 +11,9 @@ use printpdf::{
     RawImage, WindingOrder, XObjectTransform,
 };
 use printpdf::{Color, Rgb};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::{fmt, fs};
-use serde_json::Value;
 
 pub struct Context {
     pub page_height: f32,
@@ -30,20 +30,22 @@ pub struct Context {
     pub optgraphic: Vec<Op>,
     pub genpdffonts: HashMap<String, FontFamily<Font>>,
     pub input: Vec<Vec<String>>,
-    pub cur_line:i32,
+    pub cur_line: i32,
     pub cur_vpos: f64,
     pub footer_vpos: f64,
-    pub sum_work:HashMap<String,Value>,
-    pub vers:HashMap<String,String>,
-    pub page:i32,
-    pub page_report:i32,
-    pub page_total:i32 ,
-    pub flags:HashMap<String,bool>,
-    pub detail:Vec<Box<dyn exec::Detail>>,
-    pub page_header:Vec<Box<dyn exec::PageHeader>>,
-    pub footor:Vec<Box<dyn exec::Footer>>,
-    pub summary:Vec<Box<dyn exec::Summary>>,
-    pub report_summary:Vec<Box<dyn exec::ReportSummary>>,
+    pub sum_work: HashMap<String, Value>,
+    pub vers: HashMap<String, String>,
+    pub page: i32,
+    pub page_report: i32,
+    pub page_total: i32,
+    pub flags: HashMap<String, bool>,
+    pub detail: Vec<Box<dyn exec::Detail>>,
+    pub page_header: Vec<Box<dyn exec::PageHeader>>,
+    pub group_header: Vec<Box<dyn exec::GroupHeader>>,
+    pub max_level: i32,
+    pub footor: Vec<Box<dyn exec::Footer>>,
+    pub summary: Vec<Box<dyn exec::Summary>>,
+    pub report_summary: Vec<Box<dyn exec::ReportSummary>>,
 }
 impl Clone for Context {
     fn clone(&self) -> Self {
@@ -73,14 +75,15 @@ impl Clone for Context {
             flags: self.flags.clone(),
             detail: Vec::new(), // Do not clone the detail field
             page_header: Vec::new(),
+            group_header: Vec::new(),
+            max_level: 0,
             footor: Vec::new(),
             summary: Vec::new(),
             report_summary: Vec::new(),
-
         }
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum PageOrientation {
     Portrait,
     Landscape,
@@ -95,7 +98,7 @@ impl fmt::Display for PageOrientation {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum PageSize {
     A4,
     Letter,
@@ -123,20 +126,22 @@ impl Context {
             optgraphic: Vec::new(),
             genpdffonts: HashMap::new(),
             font_size: 0,
-            cur_line:0,
+            cur_line: 0,
             cur_vpos: 0.0,
-            footer_vpos:0.0,
+            footer_vpos: 0.0,
             buffer: Vec::new(),
             doc: PdfDocument::new("PDF"),
             input: Vec::new(),
-            sum_work:  HashMap::new(),
+            sum_work: HashMap::new(),
             vers: HashMap::new(),
-            page:0,
+            page: 0,
             page_report: 0,
-            page_total:0,
+            page_total: 0,
             flags: HashMap::new(),
             detail: vec![],
             page_header: vec![],
+            group_header: vec![],
+            max_level: 0,
             footor: vec![],
             summary: vec![],
             report_summary: vec![],
@@ -145,6 +150,14 @@ impl Context {
 }
 impl Context {
     pub fn set_page(&mut self, ps: PageSize, pt: PageOrientation) {
+        let (w, h) = match (ps.clone(), pt.clone()) {
+            (PageSize::A4, PageOrientation::Portrait) => (210.0, 297.0),
+            (PageSize::A4, PageOrientation::Landscape) => (297.0, 210.0),
+            (PageSize::Letter, PageOrientation::Portrait) => (216.0, 279.0),
+            (PageSize::Letter, PageOrientation::Landscape) => (279.0, 216.0),
+        };
+        self.page_height = h as f32;
+        self.page_width = w as f32;
         self.buffer
             .push(format!("P\t{}\t{}\n", ps.to_string(), pt.to_string(),));
     }
@@ -181,7 +194,7 @@ impl Context {
     pub fn set_outline_color(&mut self, r: u8, g: u8, b: u8) {
         self.buffer.push(format!("OC\t{}\t{}\t{}\n", r, g, b));
     }
-    pub fn set_outline_thickness(&mut self, t: u8) {
+    pub fn set_outline_thickness(&mut self, t: f32) {
         self.buffer.push(format!("OS\t{}\n", t));
     }
     pub fn set_outline_greyScale(&mut self, g: u8) {
@@ -251,7 +264,7 @@ impl Context {
                         "Letter" => PageSize::Letter,
                         _ => PageSize::A4,
                     };
-                    let pt = match v[2] {
+                    let pt = match v[2].trim() {
                         "Portrait" => PageOrientation::Portrait,
                         "Landscape" => PageOrientation::Landscape,
                         _ => PageOrientation::Portrait,
@@ -354,7 +367,7 @@ impl Context {
                     });
                 }
                 "OS" => {
-                    let g = v[1].trim().parse::<u8>().unwrap();
+                    let g = v[1].trim().parse::<f32>().unwrap();
                     self.optgraphic
                         .push(Op::SetOutlineThickness { pt: Pt(g as f32) });
                     self.opttext
@@ -530,8 +543,8 @@ impl Context {
                     let h = v[4].parse::<f32>().unwrap();
                     let xpt = Pt(x * 72.0 / 25.4);
                     let ypt = Pt(y * 72.0 / 25.4);
-                    let wpt = Pt(w* 72.0 / 25.4);
-                    let hpt = Pt(h* 72.0 / 25.4);
+                    let wpt = Pt(w * 72.0 / 25.4);
+                    let hpt = Pt(h * 72.0 / 25.4);
                     let wptx: PtTo1i32 = From::from(wpt);
                     let hptx: PtTo1i32 = From::from(hpt);
                     let wi32: f32 = wptx.into();
@@ -543,8 +556,8 @@ impl Context {
                     let image_bytes = fs::read(simg).expect("Failed to read image file");
                     let image = RawImage::decode_from_bytes(&image_bytes).unwrap();
                     let image_xobject_id = self.doc.add_image(&image);
-                    let mut scalex=Some(wi32 / width as f32);
-                    let mut scaleY=Some(hi32 / height as f32);
+                    let mut scalex = Some(wi32 / width as f32);
+                    let mut scaleY = Some(hi32 / height as f32);
                     self.opttext.push(Op::UseXObject {
                         id: image_xobject_id.clone(),
                         transform: XObjectTransform {
@@ -552,18 +565,18 @@ impl Context {
                             translate_y: Some(ypt),
                             scale_x: scalex.clone(),
                             scale_y: scaleY.clone(),
-                            dpi:Some(72.0),
+                            dpi: Some(72.0),
                             ..Default::default()
                         },
                     });
                 }
-                "NP" => self.new_page(),
+                "NP" => self.new_page_draw(),
                 _ => {
                     println!("Unknown command: {}", v[0]);
                 }
             }
         }
-        self.new_page();
+        self.new_page_draw();
     }
 }
 struct PtTo1i32(Pt);
@@ -607,7 +620,7 @@ impl Context {
         //context.opttext.push(Op::StartTextSection);
     }
 
-    fn new_page(&mut self) {
+    fn new_page_draw(&mut self) {
         //context.opttext.push(Op::EndTextSection);
         let mut ops: Vec<Op> = Vec::new();
         let grapiclayer = self.doc.add_layer(&Layer::new("Grapic content"));
@@ -626,41 +639,226 @@ impl Context {
         ops.push(Op::EndLayer {
             layer_id: textlayer.clone(),
         });
-        self.pages.push(PdfPage::new(
-            Mm(self.page_width),
-            Mm(self.page_height),
-            ops,
-        ));
+        self.pages
+            .push(PdfPage::new(Mm(self.page_width), Mm(self.page_height), ops));
         self.opttext = Vec::new();
         self.optgraphic = Vec::new();
         // self.opttext.push(Op::StartTextSection);
-        self.cur_vpos = 0.0;
-        self.page=self.page+1;
-        self.page_total=self.page_total+1;
-        self.page_report=self.page_report+1;
     }
 }
-impl Context{
-    pub fn exec(&mut self){
-       if self.footer_vpos==0.0{
-           panic!("Footer position is not set");
-       }
-        self.page=1;
-        self.page_total=1;
-        self.page_report=1;
-        if self.page_header.len()>0{
-                self.page_header[0].Execute(self.clone());
+impl Context {
+    pub fn exec(&mut self) {
+        if self.footer_vpos == 0.0 {
+            panic!("Footer position is not set");
         }
-        self.buffer.push("v\tPAGE\t".to_string() + self.page.to_string().as_str() );
-        for i in self.cur_line as usize..self.input.len(){
-            self.cur_line= i as i32;
+        self.page = 1;
+        self.page_total = 1;
+        self.page_report = 1;
+        self.buffer.push(
+            "V\tPAGE\t".to_string()
+                + self.page.to_string().as_str()
+                + "\tTOTALPAGE\t"
+                + self.page_total.to_string().as_str()
+                + "\n",
+        );
+        if self.page_header.len() > 0 {
+            // 1. Remove the PageHeader from the vector.
+            let header = self.page_header.remove(0);
+            // 2. Execute the header.
+            header.Execute(self);
+            //3. insert page_header
+            self.page_header.insert(0, header);
+        }
+
+        for i in self.cur_line as usize..self.input.len() {
+            self.cur_line = i as i32;
             self.exec_detail();
         }
+        if self.report_summary.len() > 0 {
+            let report_summary = self.report_summary.remove(0 as usize);
+            let height = report_summary.GetHeight(self);
+            self.page_break_check(height);
+            report_summary.Execute(self);
+            self.report_summary.insert(0 as usize, report_summary);
+            self.cur_vpos = self.cur_vpos + height as f64;
+        }
+        if self.footor.len() > 0 {
+            let footer = self.footor.remove(0);
+            footer.Execute(self);
+            self.footor.insert(0, footer);
+        }
+        self.execute_replace_pagetotal();
     }
-    pub fn exec_detail(&mut self){
-        if self.flags.get("NewPageForce"){
+    pub fn execute_replace_pagetotal(&mut self) {
+        let mut total_page: String = String::new(); // Initialize as an empty String
 
+        // First pass: find TOTALPAGE
+        for i in (0..self.buffer.len()).rev() {
+            let mut txt = self.buffer.remove(i);
+            // Create a new Vector<String> instead of Vec<&str>
+            let v: Vec<String> = txt.split("\t").map(|s| s.to_string()).collect();
+
+            if v[0] == "V" {
+                let page_temp = &v[2]; // Now a String, not a &str
+                let total_page_temp = v[4].clone(); // Now a String, not a &str
+
+                if total_page.is_empty() {
+                    total_page = total_page_temp; // Clone into total_page
+                }
+
+                //txt = txt.replace("TOTALPAGE", &total_page);
+                let parts: Vec<&str> = txt.split("\t").collect();
+                let mut new_txt = String::new();
+                for (i, part) in parts.iter().enumerate() {
+                    if i == 4 {
+                        new_txt.push_str(&total_page);
+                    } else {
+                        new_txt.push_str(part);
+                    }
+                    if i < parts.len() - 1 {
+                        new_txt.push('\t');
+                    }
+                }
+                txt = new_txt;
+
+                if *page_temp == "1" {
+                    total_page.clear(); // Clear the String
+                }
+            }
+            self.buffer.insert(i, txt);
         }
 
+        // Second pass: replace ＆＃TOTALPAGE&#
+        let mut total_page_value = "".to_string();
+        for i in 0..self.buffer.len() {
+            let mut txt = self.buffer.remove(i); // Remove and take ownership
+                                                 //parts now owns its String data, no more borrow from txt.
+            let parts: Vec<String> = txt.split("\t").map(|s| s.to_string()).collect();
+            let findtotal= r#"<<<PAGETOTAL>>>"#.to_string();
+            if txt.contains("PAGETOTAL"){
+                println!("found");
+            }
+            if parts.len() >= 3 && txt.contains(&findtotal) {
+               // if let Some(total_page_value) = total_pages.get(&current_page) {
+                    txt = txt.replace(&findtotal, &total_page_value);
+                //}
+            }
+            if parts[0] == "V" && parts.len() >= 4 && parts[2] == "1" {
+                total_page_value = parts[4].clone();
+            }
+            self.buffer.insert(i, txt);
+        }
+        // for i in 0..self.buffer.len() {
+        //     let mut txt = self.buffer.remove(i); // Remove and take ownership
+        //     let parts: Vec<String> = txt.split("\t").map(|s| s.to_string()).collect();
+        //     if parts[0] == "V" && parts.len() >= 4 && parts[3] == "TOTALPAGE" {
+        //         if let Some(total_page_value) = total_pages.get(&current_page) {
+        //             let mut new_txt = String::new();
+        //             for (i, part) in parts.iter().enumerate() {
+        //                 if i == 4 {
+        //                     new_txt.push_str(&total_page_value);
+        //                 } else {
+        //                     new_txt.push_str(part);
+        //                 }
+        //                 if i < parts.len() - 1 {
+        //                     new_txt.push('\t');
+        //                 }
+        //             }
+        //             txt = new_txt;
+        //         }
+        //     }
+        //     self.buffer.insert(i, txt);
+        //}
+    }
+    // ... (rest of your Context implementation) ...
+
+    pub fn exec_detail(&mut self) {
+        let mut detail = self.detail.remove(0);
+        if self.flags.get("NewPageForce").is_some()
+            && (*self.flags.get("NewPageForce").unwrap() == true)
+        {
+            self.page_break(*self.flags.get("ResetPageNo").unwrap());
+            self.flags.insert("NewPageForce".to_string(), false);
+        }
+        if self.max_level > 0 {
+            let bfr = detail.BreakCheckBefore(self);
+            if bfr > 0 {
+                self.execute_group_header(bfr);
+            }
+        }
+        let height = detail.GetHeight(self);
+        self.page_break_check(height);
+        detail.Execute(self);
+        if self.max_level > 0 {
+            let afr = detail.BreakCheckAfter(self);
+            if afr > 0 {
+                self.execute_group_summary(afr);
+            }
+        }
+
+        self.detail.insert(0, detail);
+    }
+
+    pub fn page_break(&mut self, reset_page_no: bool) {
+        if self.footor.len() > 0 {
+            let footer = self.footor.remove(0);
+            footer.Execute(self);
+            self.footor.insert(0, footer);
+        }
+        self.new_page();
+        if reset_page_no {
+            self.page = 1;
+            self.page_total = 1;
+        } else {
+            self.page = self.page + 1;
+            self.page_total = self.page;
+        }
+        self.page_report = self.page_report + 1;
+        self.cur_vpos = 0.0;
+        self.buffer.push(
+            "V\tPAGE\t".to_string()
+                + self.page.to_string().as_str()
+                + "\tTOTALPAGE\t"
+                + self.page_total.to_string().as_str()
+                + "\n",
+        );
+        if (self.page_header.len() > 0) {
+            let header = self.page_header.remove(0);
+            header.Execute(self);
+            self.page_header.insert(0, header);
+        }
+        if self.page == 3 {
+            println!("page 3");
+        }
+    }
+
+    pub fn execute_group_header(&mut self, level: i32) {
+        if self.group_header.len() > 0 {
+            for i in 0..level {
+                let group_header = self.group_header.remove(i as usize);
+                let height = group_header.GetHeight(self);
+                self.page_break_check(height);
+                group_header.Execute(self);
+                self.group_header.insert(i as usize, group_header);
+                self.cur_vpos = self.cur_vpos + height as f64;
+            }
+        }
+    }
+    pub fn execute_group_summary(&mut self, level: i32) {
+        if self.summary.len() > 0 {
+            for i in 0..level {
+                let summary = self.summary.remove(i as usize);
+                let height = summary.GetHeight(self);
+                self.page_break_check(height);
+                summary.Execute(self);
+                self.summary.insert(i as usize, summary);
+                // self.cur_vpos = self.cur_vpos + height as f64;
+            }
+        }
+    }
+    pub fn page_break_check(&mut self, height: f32) {
+        if self.cur_vpos + height as f64 > self.footer_vpos {
+            self.page_break(false);
+        }
     }
 }
