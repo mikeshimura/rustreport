@@ -173,9 +173,9 @@ impl Context {
     pub fn get_buffer(&self) -> String {
         self.buffer.join("")
     }
-    pub fn set_font_dir_and_name(&mut self, fontName: &str, fontDir: &str) {
+    pub fn set_font_dir_and_name(&mut self, fontDir: &str, fontName: &str) {
         self.font_name = String::from(fontName);
-        self.buffer.push(format!("FF\t{}\t{}\n", fontDir, fontName));
+        self.buffer.push(format!("FF\t{}\t{}\n", fontName, fontDir));
     }
     pub fn set_font(&mut self, fontName: &str) {
         self.font_name = String::from(fontName);
@@ -222,6 +222,32 @@ impl Context {
     pub fn write_line_horizontal(&mut self, x1: f64, y1: f64, x2: f64) {
         self.buffer.push(format!("LH\t{}\t{}\t{}\n", x1, y1, x2));
     }
+    pub fn write_line_horizontal_strlen(
+        &mut self,
+        x1: f64,
+        y1: f64,
+        s: String,
+        ofsettl: f64,
+        ofsettr: f64,
+    ) {
+        self.buffer.push(format!(
+            "LHS\t{}\t{}\t{}\t{}\t{}\n",
+            x1, y1, s, ofsettl, ofsettr
+        ));
+    }
+    pub fn write_line_horizontal_right_strlen(
+        &mut self,
+        x1: f64,
+        y1: f64,
+        s: String,
+        ofsettl: f64,
+        ofsettr: f64,
+    ) {
+        self.buffer.push(format!(
+            "LHSR\t{}\t{}\t{}\t{}\t{}\n",
+            x1, y1, s, ofsettl, ofsettr
+        ));
+    }
     pub fn write_line_vertical(&mut self, x1: f64, y1: f64, y2: f64) {
         self.buffer.push(format!("LV\t{}\t{}\t{}\n", x1, y1, y2));
     }
@@ -229,9 +255,14 @@ impl Context {
         self.buffer
             .push(format!("L\t{}\t{}\t{}\t{}\n", x1, y1, x2, y2));
     }
-    pub fn write_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, fill: &str) {
-        self.buffer
-            .push(format!("R\t{}\t{}\t{}\t{}\t{}\n", x1, y1, x2, y2, fill));
+    pub fn write_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, fill: bool) {
+        if fill {
+            self.buffer
+                .push(format!("R\t{}\t{}\t{}\t{}\t{}\n", x1, y1, x2, y2, "Y"));
+        } else {
+            self.buffer
+                .push(format!("R\t{}\t{}\t{}\t{}\t{}\n", x1, y1, x2, y2, "N"));
+        }
     }
     pub fn write_image(&mut self, x: f64, y: f64, w: f64, h: f64, img: &str) {
         self.buffer
@@ -253,6 +284,23 @@ impl Context {
     }
 }
 impl Context {
+    pub fn getWidthOfString(&self, text: String) -> f64 {
+        println!("{}", &self.font_name);
+        println!("{:?}", self.genpdffonts);
+        let width: genpdfrev::Mm = self
+            .genpdffonts
+            .get(&self.font_name)
+            .unwrap()
+            .regular
+            .str_width(
+                &self.font_cache.clone().unwrap(),
+                text.as_str(),
+                self.font_size as u8,
+            )
+            .into();
+        let f64_width: f64 = width.into();
+        return f64_width;
+    }
     pub fn convert(&mut self) {
         let buffer_lines: Vec<String> = self.buffer.clone();
         for line in buffer_lines.iter() {
@@ -407,18 +455,19 @@ impl Context {
                     let x = v[1].parse::<f32>().unwrap();
                     let y = self.page_height - v[2].parse::<f32>().unwrap();
                     let text = v[3].trim();
-                    let width: genpdfrev::Mm = self
-                        .genpdffonts
-                        .get(&self.font_name)
-                        .unwrap()
-                        .regular
-                        .str_width(
-                            &self.font_cache.clone().unwrap(),
-                            text,
-                            self.font_size as u8,
-                        )
-                        .into();
-                    let f64_width: f64 = width.into();
+                    // let width: genpdfrev::Mm = self
+                    //     .genpdffonts
+                    //     .get(&self.font_name)
+                    //     .unwrap()
+                    //     .regular
+                    //     .str_width(
+                    //         &self.font_cache.clone().unwrap(),
+                    //         text,
+                    //         self.font_size as u8,
+                    //     )
+                    //     .into();
+                    // let f64_width: f64 = width.into();
+                    let f64_width = self.getWidthOfString(text.to_string());
                     let modx: f32 = (x - f64_width as f32);
                     let modx_pt = Pt(modx as f32 * 72.0 / 25.4);
                     let y_pt = Pt(y as f32 * 72.0 / 25.4);
@@ -469,6 +518,38 @@ impl Context {
                         points: vec![
                             (Point::new(Mm(x1), Mm(y1)), false),
                             (Point::new(Mm(x2), Mm(y1)), false),
+                        ],
+                        is_closed: true,
+                    };
+                    self.optgraphic.push(Op::DrawLine { line: line1 });
+                }
+                "LHS" => {
+                    let x1 = v[1].parse::<f32>().unwrap();
+                    let y1 = self.page_height - v[2].parse::<f32>().unwrap();
+                    let s: String = v[3].to_string();
+                    let o1 = v[4].trim().parse::<f32>().unwrap();
+                    let o2 = v[5].trim().parse::<f32>().unwrap();
+                    let width= self.getWidthOfString(s.clone());
+                    let line1 = Line {
+                        points: vec![
+                            (Point::new(Mm(x1+o1), Mm(y1)), false),
+                            (Point::new(Mm(x1+width as f32+o2), Mm(y1)), false),
+                        ],
+                        is_closed: true,
+                    };
+                    self.optgraphic.push(Op::DrawLine { line: line1 });
+                }
+                "LHSR" => {
+                    let x1 = v[1].parse::<f32>().unwrap();
+                    let y1 = self.page_height - v[2].parse::<f32>().unwrap();
+                    let s: String = v[3].to_string();
+                    let o1 = v[4].trim().parse::<f32>().unwrap();
+                    let o2 = v[5].trim().parse::<f32>().unwrap();
+                    let width= self.getWidthOfString(s.clone());
+                    let line1 = Line {
+                        points: vec![
+                            (Point::new(Mm(x1-width as f32+o1), Mm(y1)), false),
+                            (Point::new(Mm(x1+o2), Mm(y1)), false),
                         ],
                         is_closed: true,
                     };
@@ -734,13 +815,13 @@ impl Context {
             let mut txt = self.buffer.remove(i); // Remove and take ownership
                                                  //parts now owns its String data, no more borrow from txt.
             let parts: Vec<String> = txt.split("\t").map(|s| s.to_string()).collect();
-            let findtotal= r#"<<<PAGETOTAL>>>"#.to_string();
-            if txt.contains("PAGETOTAL"){
+            let findtotal = r#"&#PAGETOTAL&#"#.to_string();
+            if txt.contains("PAGETOTAL") {
                 println!("found");
             }
             if parts.len() >= 3 && txt.contains(&findtotal) {
-               // if let Some(total_page_value) = total_pages.get(&current_page) {
-                    txt = txt.replace(&findtotal, &total_page_value);
+                // if let Some(total_page_value) = total_pages.get(&current_page) {
+                txt = txt.replace(&findtotal, &total_page_value);
                 //}
             }
             if parts[0] == "V" && parts.len() >= 4 && parts[2] == "1" {
@@ -833,8 +914,12 @@ impl Context {
     }
 
     pub fn execute_group_header(&mut self, level: i32) {
+        let mut execlevl = level;
+        if execlevl > self.group_header.len() as i32 {
+            execlevl = self.group_header.len() as i32;
+        }
         if self.group_header.len() > 0 {
-            for i in 0..level {
+            for i in 0..execlevl {
                 let group_header = self.group_header.remove(i as usize);
                 let height = group_header.GetHeight(self);
                 self.page_break_check(height);
@@ -845,15 +930,18 @@ impl Context {
         }
     }
     pub fn execute_group_summary(&mut self, level: i32) {
-        if self.summary.len() > 0 {
-            for i in 0..level {
-                let summary = self.summary.remove(i as usize);
-                let height = summary.GetHeight(self);
-                self.page_break_check(height);
-                summary.Execute(self);
-                self.summary.insert(i as usize, summary);
-                // self.cur_vpos = self.cur_vpos + height as f64;
-            }
+        let mut execlevl = level;
+        if execlevl > self.summary.len() as i32 {
+            execlevl = self.summary.len() as i32;
+        }
+
+        for i in 0..execlevl {
+            let summary = self.summary.remove(i as usize);
+            let height = summary.GetHeight(self);
+            self.page_break_check(height);
+            summary.Execute(self);
+            self.summary.insert(i as usize, summary);
+            // self.cur_vpos = self.cur_vpos + height as f64;
         }
     }
     pub fn page_break_check(&mut self, height: f32) {
