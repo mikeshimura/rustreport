@@ -529,11 +529,11 @@ impl Context {
                     let s: String = v[3].to_string();
                     let o1 = v[4].trim().parse::<f32>().unwrap();
                     let o2 = v[5].trim().parse::<f32>().unwrap();
-                    let width= self.getWidthOfString(s.clone());
+                    let width = self.getWidthOfString(s.clone());
                     let line1 = Line {
                         points: vec![
-                            (Point::new(Mm(x1+o1), Mm(y1)), false),
-                            (Point::new(Mm(x1+width as f32+o2), Mm(y1)), false),
+                            (Point::new(Mm(x1 + o1), Mm(y1)), false),
+                            (Point::new(Mm(x1 + width as f32 + o2), Mm(y1)), false),
                         ],
                         is_closed: true,
                     };
@@ -545,11 +545,11 @@ impl Context {
                     let s: String = v[3].to_string();
                     let o1 = v[4].trim().parse::<f32>().unwrap();
                     let o2 = v[5].trim().parse::<f32>().unwrap();
-                    let width= self.getWidthOfString(s.clone());
+                    let width = self.getWidthOfString(s.clone());
                     let line1 = Line {
                         points: vec![
-                            (Point::new(Mm(x1-width as f32+o1), Mm(y1)), false),
-                            (Point::new(Mm(x1+o2), Mm(y1)), false),
+                            (Point::new(Mm(x1 - width as f32 + o1), Mm(y1)), false),
+                            (Point::new(Mm(x1 + o2), Mm(y1)), false),
                         ],
                         is_closed: true,
                     };
@@ -826,6 +826,51 @@ impl Context {
             }
             if parts[0] == "V" && parts.len() >= 4 && parts[2] == "1" {
                 total_page_value = parts[4].clone();
+            }
+            if txt.contains("!!!") {
+                for i in 0..parts.len() {
+                    if parts[i].contains("!!!") {
+                        let  mut found = parts[i].clone().trim().to_string();
+                        print!("found {:?} {}", found, i);
+
+                        // HashMap::get() を使用して値を取得し、Option<&Value> を返す
+                        if let Some(work) = self.sum_work.get(&found) {
+                            println!("work {:?}", work);
+
+                            // work が数値の場合（total が数値だと仮定）
+                            if let Some(num) = work.as_f64() {
+                                let work_str = num.to_string();
+                                let mut new_txt = String::new();
+                                for (j, part) in parts.iter().enumerate() {
+                                    if j == i {
+                                        new_txt.push_str(&work_str);
+                                    } else {
+                                        new_txt.push_str(part);
+                                    }
+                                    if j < parts.len() - 1 {
+                                        new_txt.push('\t');
+                                    }
+                                }
+                                txt = new_txt;
+                            }
+                            // 文字列として扱いたい場合
+                            else if let Some(work_str) = work.as_str() {
+                                let mut new_txt = String::new();
+                                for (j, part) in parts.iter().enumerate() {
+                                    if j == i {
+                                        new_txt.push_str(work_str);
+                                    } else {
+                                        new_txt.push_str(part);
+                                    }
+                                    if j < parts.len() - 1 {
+                                        new_txt.push('\t');
+                                    }
+                                }
+                                txt = new_txt;
+                            }
+                        }
+                    }
+                }
             }
             self.buffer.insert(i, txt);
         }
