@@ -34,7 +34,7 @@ Additional Sample located bottom.
     -   Use dash patterns for lines.
 -   **Two-Step PDF Creation:**
     1.  **Text Buffer Generation:** The `Context` object creates an intermediate text buffer representing the layout and commands.
-    2.  **PDF Conversion:** The `convert()` method then processes this buffer and uses `printpdf` to generate the final PDF.
+       2.  **PDF Conversion:** The `convert()` method then processes this buffer and uses `printpdf` to generate the final PDF. I use function of `printpdf` version 0.8. Until 0.8 is available from crates.io, please use form github repoositiory. I also use revised `genpdf` which is included in source file to measure the width of a string.
 -   **Automatic Page Numbering and Totals:** The `flags` system allows for control flags such as "__pagetotal__" for automatic page number placement and provides a `sum_work` HashMap for the `Summary` section to calculate totals.
 -  **Flexible output**: Output the final PDF or an intermediate text file.
 
@@ -63,6 +63,7 @@ The `Context` struct is the heart of `rustreport`. It manages the state of the r
 - `set_page_by_mm(h:f64,w:f64)`:  Sets the page by custom mm
 -   `set_font_dir_and_name(fontDir: &str, fontName: &str)`: Specifies the directory and name of a font to be loaded.
 -   `set_font(fontName: &str)`: Sets the current font.
+- Font is assumed -Regular suffix. If you want to use bold, you need to load the font in other directory with -Regular suffix.
 -   `set_font_size(font_size: i32)`: Sets the font size.
 -   `set_text_color(r: u8, g: u8, b: u8)`: Sets the current text color (RGB).
 -   `set_text_greyScale(g: u8)`: Set the current text color (greyScale).
