@@ -12,7 +12,7 @@ mod medium1 {
     #[test]
     fn medium1() {
         let mut context = rustreport::Context::new();
-        let txt = std::fs::read_to_string("C:\\a\\wkrust\\rustpdf\\tests\\examples\\sales1.txt")
+        let txt = std::fs::read_to_string("tests\\sales1.txt")
             .expect("Unable to read file");
 
         // Split the input into lines and then split each line by tabs
@@ -28,7 +28,7 @@ mod medium1 {
         context.flags.insert("__pagetotal__".to_string(), true);
         context.set_page(A4, Landscape);
         context.set_font_dir_and_name(
-            "C:\\a\\wkrust\\rustpdf\\assets\\fonts\\Noto_Serif_JP\\static",
+            "assets\\fonts\\Noto_Serif_JP\\static",
             "NotoSerifJP",
         );
         context.set_font("NotoSerifJP");

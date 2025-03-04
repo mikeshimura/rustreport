@@ -13,7 +13,7 @@ mod complex2 {
     #[test]
     fn complex2() {
         let mut context = rustreport::Context::new();
-        let txt = std::fs::read_to_string("C:\\a\\wkrust\\rustpdf\\tests\\examples\\invoice2.txt")
+        let txt = std::fs::read_to_string("tests\\invoice2.txt")
             .expect("Unable to read file");
 
         // Split the input into lines and then split each line by tabs
@@ -28,11 +28,11 @@ mod complex2 {
             .collect::<Vec<Vec<String>>>();
         context.set_page(A4, Portrait);
         context.set_font_dir_and_name(
-            "C:\\a\\wkrust\\rustpdf\\assets\\fonts\\Noto_Sans_JP\\static\\bold",
+            "assets\\fonts\\Noto_Sans_JP\\static\\bold",
             "NotoSansJPBold",
         );
         context.set_font_dir_and_name(
-            "C:\\a\\wkrust\\rustpdf\\assets\\fonts\\Noto_Sans_JP\\static",
+            "assets\\fonts\\Noto_Sans_JP\\static",
             "NotoSansJP",
         );
         context.set_font_size(12);

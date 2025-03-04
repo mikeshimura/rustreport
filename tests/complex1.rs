@@ -12,7 +12,7 @@ mod complex1 {
     #[test]
     fn complex1() {
         let mut context = rustreport::Context::new();
-        let txt = std::fs::read_to_string("C:\\a\\wkrust\\rustpdf\\tests\\examples\\invoice.txt")
+        let txt = std::fs::read_to_string("tests\\invoice.txt")
             .expect("Unable to read file");
 
         // Split the input into lines and then split each line by tabs
@@ -28,11 +28,11 @@ mod complex1 {
         context.flags.insert("__pagetotal__".to_string(), true);
         context.set_page(A4, Portrait);
         context.set_font_dir_and_name(
-            "C:\\a\\wkrust\\rustpdf\\assets\\fonts\\Roboto\\static",
+            "assets\\fonts\\Roboto\\static",
             "Roboto_Condensed",
         );
         context.set_font_dir_and_name(
-            "C:\\a\\wkrust\\rustpdf\\assets\\fonts\\Roboto\\static\\bold",
+            "assets\\fonts\\Roboto\\static\\bold",
             "Roboto_CondensedBold",
         );
         context.set_font_size(12);
